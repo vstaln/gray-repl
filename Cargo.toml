@@ -1,0 +1,11 @@
+[package]
+name = "gray-repl"
+version = "0.1.0"
+edition = "2024"
+description = "persistent per-session Python control env (prime-agent rlm port)"
+license = "MIT"
+[[bin]]
+name = "repl"
+path = "src/main.rs"
+[dependencies]
+serde_json = { version = "1", features = ["preserve_order"] }
