@@ -202,6 +202,7 @@ fn manifest() -> Value {
              "required": ["action"]}},
         ],
         "commands": ["/repl"],
+        "command_descriptions": {"/repl": "manage the persistent Python kernel"},
         "subcommands": ["repl"],
     })
 }
