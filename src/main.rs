@@ -23,7 +23,7 @@ use std::process::{Child, ChildStdin, Command, Stdio};
 use std::sync::mpsc;
 use std::time::Duration;
 
-use serde_json::{json, Value};
+use serde_json::{Value, json};
 
 const DRIVER: &str = r#"
 import sys, os, io, ast, json, pickle, builtins, linecache, traceback
@@ -223,7 +223,13 @@ fn state_dir() -> PathBuf {
 fn sanitize(s: &str) -> String {
     let s: String = s
         .chars()
-        .map(|c| if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') { c } else { '-' })
+        .map(|c| {
+            if c.is_ascii_alphanumeric() || matches!(c, '.' | '_' | '-') {
+                c
+            } else {
+                '-'
+            }
+        })
         .collect();
     if s.is_empty() { "default".into() } else { s }
 }
@@ -258,16 +264,16 @@ impl Kernel {
             .stdout(Stdio::piped())
             .stderr(Stdio::inherit())
             .spawn()
-            .map_err(|e| {
-                format!("cannot start python3 ({e}) — gray-repl needs CPython on PATH")
-            })?;
+            .map_err(|e| format!("cannot start python3 ({e}) — gray-repl needs CPython on PATH"))?;
         let stdout = child.stdout.take().ok_or("no kernel stdout")?;
         let stdin = child.stdin.take().ok_or("no kernel stdin")?;
         let (tx, rx) = mpsc::channel();
         std::thread::spawn(move || {
             for line in BufReader::new(stdout).lines() {
                 let Ok(line) = line else { break };
-                let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+                let Ok(v) = serde_json::from_str::<Value>(&line) else {
+                    continue;
+                };
                 if tx.send(v).is_err() {
                     break;
                 }
@@ -281,7 +287,12 @@ impl Kernel {
                 return Err("kernel did not announce ready — is python3 a real CPython?".into());
             }
         }
-        Ok(Kernel { child, stdin, rx, seq: 0 })
+        Ok(Kernel {
+            child,
+            stdin,
+            rx,
+            seq: 0,
+        })
     }
 
     /// One request round-trip. On timeout or a dead channel the child is
@@ -309,17 +320,14 @@ impl Kernel {
                 Ok(_) => continue,
                 Err(mpsc::RecvTimeoutError::Timeout) => continue,
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
-                    return Err("kernel stdout closed — kernel dead".into())
+                    return Err("kernel stdout closed — kernel dead".into());
                 }
             }
         }
     }
 }
 
-fn kernel<'m>(
-    map: &'m mut HashMap<String, Kernel>,
-    sid: &str,
-) -> Result<&'m mut Kernel, String> {
+fn kernel<'m>(map: &'m mut HashMap<String, Kernel>, sid: &str) -> Result<&'m mut Kernel, String> {
     if !map.contains_key(sid) {
         map.insert(sid.to_string(), Kernel::spawn()?);
     }
@@ -332,24 +340,34 @@ fn render_exec(v: &Value) -> (String, bool) {
         out.push_str(s);
     }
     if let Some(s) = v["stderr"].as_str().filter(|s| !s.is_empty()) {
-        if !out.is_empty() { out.push('\n'); }
+        if !out.is_empty() {
+            out.push('\n');
+        }
         out.push_str("[stderr]\n");
         out.push_str(s);
     }
     if let Some(e) = v["error"].as_str() {
-        if !out.is_empty() { out.push('\n'); }
+        if !out.is_empty() {
+            out.push('\n');
+        }
         out.push_str(&format!(
             "{e}: {}\n{}",
             v["evalue"].as_str().unwrap_or(""),
             v["traceback"]
                 .as_array()
-                .map(|t| t.iter().filter_map(Value::as_str).collect::<Vec<_>>().join(""))
+                .map(|t| t
+                    .iter()
+                    .filter_map(Value::as_str)
+                    .collect::<Vec<_>>()
+                    .join(""))
                 .unwrap_or_default()
         ));
         return (out.trim_end().to_string(), true);
     }
     if let Some(r) = v["result"].as_str() {
-        if !out.is_empty() { out.push('\n'); }
+        if !out.is_empty() {
+            out.push('\n');
+        }
         out.push_str(r);
     }
     if out.is_empty() {
@@ -366,8 +384,12 @@ fn tool(map: &mut HashMap<String, Kernel>, name: &str, args: &Value, params: &Va
         match name {
             "repl_exec" => {
                 let code = args["code"].as_str().ok_or("repl_exec needs code")?;
-                let ms = args["timeout_ms"].as_u64().unwrap_or(30_000).clamp(100, 600_000);
-                let v = kernel(map, &sid)?.call(json!({"code": code}), Duration::from_millis(ms))?;
+                let ms = args["timeout_ms"]
+                    .as_u64()
+                    .unwrap_or(30_000)
+                    .clamp(100, 600_000);
+                let v =
+                    kernel(map, &sid)?.call(json!({"code": code}), Duration::from_millis(ms))?;
                 let (text, is_err) = render_exec(&v);
                 if is_err {
                     return Err(text); // is_error result below
@@ -388,8 +410,13 @@ fn tool(map: &mut HashMap<String, Kernel>, name: &str, args: &Value, params: &Va
                 }
                 Ok(names
                     .iter()
-                    .map(|n| format!("{} : {}", n["name"].as_str().unwrap_or("?"),
-                                     n["type"].as_str().unwrap_or("?")))
+                    .map(|n| {
+                        format!(
+                            "{} : {}",
+                            n["name"].as_str().unwrap_or("?"),
+                            n["type"].as_str().unwrap_or("?")
+                        )
+                    })
                     .collect::<Vec<_>>()
                     .join("\n"))
             }
@@ -463,7 +490,9 @@ fn sidecar() -> std::io::Result<()> {
     let mut kernels: HashMap<String, Kernel> = HashMap::new();
     for line in stdin.lock().lines() {
         let line = line?;
-        let Ok(v) = serde_json::from_str::<Value>(&line) else { continue };
+        let Ok(v) = serde_json::from_str::<Value>(&line) else {
+            continue;
+        };
         let method = v["method"].as_str().unwrap_or("");
         match v.get("id").cloned() {
             None if method == "plugin/shutdown" => break,
@@ -484,7 +513,12 @@ fn sidecar() -> std::io::Result<()> {
                     "command/run" => {
                         let argv: Vec<String> = v["params"]["argv"]
                             .as_array()
-                            .map(|a| a.iter().filter_map(Value::as_str).map(str::to_string).collect())
+                            .map(|a| {
+                                a.iter()
+                                    .filter_map(Value::as_str)
+                                    .map(str::to_string)
+                                    .collect()
+                            })
                             .unwrap_or_default();
                         let text = cmd(&mut kernels, &argv, &v["params"]);
                         json!({"id": id, "result": {"text": text}})
@@ -516,6 +550,8 @@ fn main() {
             }
             let _ = sidecar();
         }
-        _ => println!("repl — the live kernel runs inside the gray sidecar; use /repl status|vars|reset|save|load in-session"),
+        _ => println!(
+            "repl — the live kernel runs inside the gray sidecar; use /repl status|vars|reset|save|load in-session"
+        ),
     }
 }
