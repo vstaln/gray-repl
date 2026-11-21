@@ -394,7 +394,7 @@ fn tool(map: &mut HashMap<String, Kernel>, name: &str, args: &Value, params: &Va
                 if is_err {
                     return Err(text); // is_error result below
                 }
-                return Ok(text);
+                Ok(text)
             }
             "repl_reset" => {
                 if let Some(mut k) = map.remove(&sid) {
@@ -437,7 +437,7 @@ fn tool(map: &mut HashMap<String, Kernel>, name: &str, args: &Value, params: &Va
                 }
                 Ok(serde_json::to_string_pretty(&v).unwrap_or_default())
             }
-            t => return Err(format!("unknown tool {t}")),
+            t => Err(format!("unknown tool {t}")),
         }
     })();
     match res {
